@@ -30,11 +30,14 @@ from dionaea.core import *
 from .include.packets import *
 import logging
 import sqlite3
+import tempfile
 
 logger = logging.getLogger('mysqld')
 class mysqld(connection):
 	def __init__ (self):
 		connection.__init__(self,"tcp")
+	
+		self.autocommit = 1
 
 	def handle_established(self):
 		self.config = g_dionaea.config()['modules']['python']['mysql']['databases']
@@ -89,8 +92,51 @@ class mysqld(connection):
 
 	def _handle_COM_QUERY(self, p):
 		r = None
-		if p.Query.startswith(b"SET "):
-			r = MySQL_Result_OK(Message="#2")
+		#logger.info("Q: %s\n" % p.Query)
+               if p.Query.upper().startswith(b"SET "):
+	       #r = MySQL_Result_OK(Message="#2")
+	
+	       if (p.Query.upper() == b'SET AUTOCOMMIT=0'):
+	               logger.info("   Setting autocommit to 0")
+	               self.autocommit = 0
+	               r = MySQL_Result_OK(ServerStatus = 0x000)
+	       else:
+	               # check for 0x4D5A
+	               qry = p.Query.lower()
+	               try:
+	                       # strip white space
+	                       qry = qry.translate(None,b"\r\n\t ")
+	               except Exception as e:
+	                       logger.info(e)
+	
+	               # convert it to a string so .find() will work
+	               qry = str(qry)
+	               #logger.info("q: %s\n" % qry)
+	               peidx = qry.find("0x4d5a")
+	
+	               if (peidx >= 0):
+	                       # extract PE file
+	                       idx = peidx + 2
+	                       while ((qry[idx] in "0123456789abcdef\r\n\t ") and (idx < len(qry))):
+	                               #logger.info("[%d]: %c" % (idx,qry[idx]))
+	                               idx = idx + 1
+	                       logger.info("pe @ %d - %d" % (peidx + 2,idx))
+	                       hexstr = qry[peidx + 2:idx]
+	                       #logger.info("PE: %s\n" % hexstr)
+	                       try:
+	                               f = tempfile.NamedTemporaryFile(delete = False,prefix = "mysql-",suffix = ".tmp",dir = g_dionaea.config()['downloads']['dir'])
+	                               f.write(bytes.fromhex(hexstr))
+	                               f.close()
+	                       except Exception as e:
+	                               logger.info(e)
+	
+	                       i = incident("dionaea.download.complete")
+	                       i.path = f.name
+	                       i.url = "hex://" + self.remote.host
+	                       i.con = self
+	                       i.report()
+	
+	               r = MySQL_Result_OK()
 		elif p.Query == b'select @@version_comment limit 1':
 			r = [MySQL_Result_Header(FieldCount=1),
 
@@ -158,6 +204,57 @@ class mysqld(connection):
 				x = MySQL_Result_Row_Data(ColumnValues=[res[name] for name in names])
 				r.append(x)
 			r.append(MySQL_Result_EOF(ServerStatus=0x002))
+		elif p.Query.upper() == b'SELECT VERSION()':
+                       logger.info("   EOF with autocommit: %d" % self.autocommit)
+                       r = [MySQL_Result_Header(FieldCount = 1),
+
+                               MySQL_Result_Field(Catalog='def',
+                                       Database=b'',
+                                       Table=b'',
+                                       ORGTable=b'',
+                                       Name=b'VERSION()',
+                                       ORGName=b'',
+                                       CharSet=33,                     # utf8, collate utf8_general_ci
+                                       Length=8,
+                                       Type=FIELD_TYPE_VAR_STRING,
+                                       Flags=FLAG_NOT_NULL,
+                                       Decimals=31),
+                               MySQL_Result_EOF(ServerStatus=self.autocommit * 0x002)]
+
+                       r.append(MySQL_Result_Row_Data(ColumnValues=["5.5.28-1"]))
+                       r.append(MySQL_Result_EOF(ServerStatus=self.autocommit * 0x002))
+               elif p.Query.upper().startswith(b"SELECT XPDL3("):
+                       qry = p.Query.lower()
+                       try:
+                               # strip white space
+                               qry = qry.translate(None,b"\r\n\t ")
+                       except Exception as e:
+                               logger.info(e)
+
+                       # convert it to a string so .find() will work
+                       qry = str(qry)
+                       #logger.info("q: %s\n" % qry)
+
+                       urlidx = -1
+                       httpidx = qry.find("'http:")
+                       httpsidx = qry.find("'https:")
+                       if (httpidx >= 0):
+                               urlidx = httpidx + 1
+                       elif (httpsidx >= 0):
+                               urlidx = httpsidx + 1
+
+                       if (urlidx >= 0):
+                               urlend = qry.find("'",urlidx)
+                               if (urlend >= 0):
+                                       url = qry[urlidx:urlend]
+                                       logger.info("U: %s\n" % url)
+
+                                       i = incident("dionaea.download.offer")
+                                       i.con = self
+                                       i.url = url
+                                       i.report()
+
+                                       r = MySQL_Result_OK(Message='#ok...(c:\isetup.exe) portnumber (3389) osversion (WinXP)',ServerStatus=self.autocommit * 0x002)	
 		else:
 			p.show()
 			try:
