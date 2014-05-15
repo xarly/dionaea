@@ -34,6 +34,7 @@ PYSCRIPTS += nfq.py
 PYSCRIPTS += http.py
 PYSCRIPTS += log.py
 PYSCRIPTS += logsql.py
+PYSCRIPTS += logmysql.py
 PYSCRIPTS += p0f.py
 PYSCRIPTS += cmd.py
 PYSCRIPTS += emu.py

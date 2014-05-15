@@ -93,6 +93,10 @@ def new():
 	if "logsql" in g_dionaea.config()['modules']['python']['ihandlers']['handlers']:
 		import dionaea.logsql
 		g_handlers.append(dionaea.logsql.logsqlhandler("*"))
+	
+	if "logmysql" in g_dionaea.config()['modules']['python']['ihandlers']['handlers']:
+		import dionaea.logmysql
+		g_handlers.append(dionaea.logmysql.logsqlhandler("*"))
 
 	if "p0f" in g_dionaea.config()['modules']['python']['ihandlers']['handlers']:
 		import dionaea.p0f
