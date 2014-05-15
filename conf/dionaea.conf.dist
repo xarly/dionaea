@@ -366,6 +366,13 @@ modules = {
 				file = "var/dionaea/logsql.sqlite"
 			}
 		}
+		logmysql = {
+			host = ""
+			port = ""
+			user = ""
+			pass = ""
+			db = ""
+		}
 		logxmpp = {
 			/**
 			 * this section defines a single xmpp logging target
@@ -470,6 +477,7 @@ modules = {
 		ihandlers = {
 			handlers = ["ftpdownload", "tftpdownload", "emuprofile", "cmdshell", "store", "uniquedownload", 
 			"logsql",
+			"logmysql",
 //			"virustotal",
 //			"mwserv",
 //			"submit_http",
